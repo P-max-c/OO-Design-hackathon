@@ -1,0 +1,511 @@
+<title>Smart Parking System</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: a garage control room. Left rail holds the Driver and Admin actors, the right side shows the floors as painted bays, bookings and the method log sit below. */
+:root {
+  --bg: #EDEFF3;
+  --surface: #FFFFFF;
+  --surface-2: #E4E8EE;
+  --fg: #14181F;
+  --muted: #566070;
+  --line: #CBD1DA;
+  --accent: #1F4FD8;
+  --accent-fg: #FFFFFF;
+  --ok: #0F7A57;
+  --ok-bg: #DCF2E8;
+  --busy: #B42318;
+  --busy-bg: #FBE3E0;
+  --warn: #7F5200;
+  --warn-bg: #FAEBC6;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1218; --surface: #171C24; --surface-2: #202732; --fg: #E8EBF1; --muted: #98A2B3;
+    --line: #2C3441; --accent: #7B9DFF; --accent-fg: #0A1022;
+    --ok: #4FD3A0; --ok-bg: #12342A; --busy: #FF8F80; --busy-bg: #3B1C19; --warn: #F2C14E; --warn-bg: #3A2D0E;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1218; --surface: #171C24; --surface-2: #202732; --fg: #E8EBF1; --muted: #98A2B3;
+  --line: #2C3441; --accent: #7B9DFF; --accent-fg: #0A1022;
+  --ok: #4FD3A0; --ok-bg: #12342A; --busy: #FF8F80; --busy-bg: #3B1C19; --warn: #F2C14E; --warn-bg: #3A2D0E;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.5;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: 28px; line-height: 1.15; }
+h2 { font-size: 17px; }
+.eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.mono { font-family: var(--font-mono); }
+
+header.top { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: flex-end; justify-content: space-between; }
+header.top .title { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+header.top p { margin: 0; color: var(--muted); }
+.stats { display: flex; gap: 10px; flex-wrap: wrap; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; min-width: 96px; }
+.stat b { display: block; font-family: var(--font-display); font-size: 24px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); }
+
+.layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 20px; align-items: start; }
+.rail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+
+label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 500; color: var(--muted); }
+input, select {
+  font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px 10px; min-width: 0; width: 100%;
+}
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+button { font: inherit; cursor: pointer; }
+.btn { border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); border-radius: 6px; padding: 8px 14px; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 4px 10px; font-size: 12px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.msg { min-height: 20px; font-size: 13px; color: var(--muted); margin: 0; }
+.msg.err { color: var(--busy); }
+.msg.good { color: var(--ok); }
+.hint { font-size: 12px; color: var(--muted); margin: 0; }
+
+.floor { display: flex; flex-direction: column; gap: 10px; }
+.floor h3 { font-size: 15px; display: flex; gap: 10px; align-items: baseline; }
+.floor h3 span { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-weight: 500; }
+.bays { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 0; border-top: 3px solid var(--line); }
+.slot {
+  display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; gap: 2px;
+  min-height: 84px; padding: 10px; text-align: left; color: var(--fg);
+  background: var(--surface); border: 0; border-left: 3px solid var(--line); border-bottom: 3px solid var(--line);
+}
+.slot:last-child { border-right: 3px solid var(--line); }
+.slot .sid { font-family: var(--font-mono); font-weight: 700; font-size: 13px; }
+.slot .stype { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.slot .sstat { font-size: 12px; font-weight: 600; }
+.slot[data-status="AVAILABLE"] { background: var(--ok-bg); }
+.slot[data-status="AVAILABLE"] .sstat { color: var(--ok); }
+.slot[data-status="OCCUPIED"] { background: var(--busy-bg); }
+.slot[data-status="OCCUPIED"] .sstat { color: var(--busy); }
+.slot[data-status="MAINTENANCE"] { background: repeating-linear-gradient(135deg, var(--warn-bg) 0 8px, transparent 8px 16px); }
+.slot[data-status="MAINTENANCE"] .sstat { color: var(--warn); }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--line); }
+.legend .a { background: var(--ok-bg); } .legend .o { background: var(--busy-bg); } .legend .m { background: var(--warn-bg); }
+
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 13px; }
+th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+td.num { font-variant-numeric: tabular-nums; }
+.pill { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 11px; font-weight: 600; font-family: var(--font-mono); background: var(--surface-2); color: var(--muted); }
+.pill[data-s="CONFIRMED"], .pill[data-s="SUCCESS"] { background: var(--ok-bg); color: var(--ok); }
+.pill[data-s="CANCELLED"], .pill[data-s="FAILED"] { background: var(--busy-bg); color: var(--busy); }
+.pill[data-s="REFUNDED"], .pill[data-s="PENDING"] { background: var(--warn-bg); color: var(--warn); }
+.empty { color: var(--muted); padding: 14px 0 4px; margin: 0; }
+
+.log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; max-height: 260px; overflow-y: auto; }
+.log li { display: grid; grid-template-columns: 64px minmax(0, 210px) minmax(0, 1fr); gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.log .t { font-family: var(--font-mono); color: var(--muted); }
+.log .tag { font-family: var(--font-mono); color: var(--accent); overflow-wrap: anywhere; }
+.log .m { overflow-wrap: anywhere; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .log li { grid-template-columns: 1fr; gap: 0; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="title">
+      <span class="eyebrow">ParkingLot · <span id="lot-id"></span></span>
+      <h1 id="lot-name"></h1>
+      <p id="lot-addr"></p>
+    </div>
+    <div class="stats" id="stats" aria-live="polite"></div>
+  </header>
+
+  <div class="layout">
+    <aside class="rail">
+      <section class="panel" aria-labelledby="drv-h">
+        <header><h2 id="drv-h">Driver</h2><span class="eyebrow">searchParking · bookSlot</span></header>
+        <div class="row">
+          <label for="drv-name">Name <input id="drv-name" value="Puneet" autocomplete="off"></label>
+          <label for="drv-phone">Phone <input id="drv-phone" value="9999999999" inputmode="tel" autocomplete="off"></label>
+        </div>
+        <div class="row">
+          <label for="veh-no">Vehicle no. <input id="veh-no" value="KA01AB1234" autocomplete="off"></label>
+          <label for="veh-type">Vehicle type
+            <select id="veh-type"><option>CAR</option><option>BIKE</option></select>
+          </label>
+        </div>
+        <label for="hours">Duration
+          <select id="hours">
+            <option value="1">1 hour</option><option value="2">2 hours</option><option value="3" selected>3 hours</option>
+            <option value="4">4 hours</option><option value="6">6 hours</option><option value="8">8 hours</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button class="btn primary" id="book" type="button">Book slot</button>
+          <button class="btn" id="search" type="button">Search parking</button>
+        </div>
+        <p class="msg" id="drv-msg" aria-live="polite"></p>
+        <p class="hint">Rate is ₹20 per hour, minimum one hour. Booking starts now.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="adm-h">
+        <header><h2 id="adm-h">Admin</h2><span class="eyebrow">addParkingFloor · updateSlotStatus</span></header>
+        <div class="actions">
+          <button class="btn" id="add-floor" type="button">Add parking floor</button>
+        </div>
+        <p class="hint">Select any free slot to move it to maintenance, and select it again to reopen it. Booked slots stay locked until the booking is cancelled.</p>
+        <p class="msg" id="adm-msg" aria-live="polite"></p>
+      </section>
+    </aside>
+
+    <main class="main">
+      <section class="panel" aria-labelledby="floors-h">
+        <header><h2 id="floors-h">Floors and slots</h2>
+          <div class="legend"><span><i class="a"></i>Free</span><span><i class="o"></i>Booked</span><span><i class="m"></i>Maintenance</span></div>
+        </header>
+        <div id="floors"></div>
+      </section>
+    </main>
+  </div>
+
+  <section class="panel" aria-labelledby="bk-h">
+    <header><h2 id="bk-h">Bookings</h2><span class="eyebrow">Booking · Payment</span></header>
+    <div class="scroll" id="bookings"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="log-h">
+    <header><h2 id="log-h">Method log</h2><span class="eyebrow">which class handled each step</span></header>
+    <ol class="log" id="log"></ol>
+  </section>
+</div>
+
+<script>
+/* ---------- Domain classes, mirroring the UML diagram ---------- */
+const SlotStatus = { AVAILABLE: "AVAILABLE", OCCUPIED: "OCCUPIED", MAINTENANCE: "MAINTENANCE" };
+const BookingStatus = { PENDING: "PENDING", CONFIRMED: "CONFIRMED", CANCELLED: "CANCELLED" };
+const PaymentStatus = { PENDING: "PENDING", SUCCESS: "SUCCESS", REFUNDED: "REFUNDED", FAILED: "FAILED" };
+
+const RATE_PER_HOUR = 20;
+const newId = (p) => p + "-" + Math.random().toString(16).slice(2, 10);
+
+const logEntries = [];
+function log(tag, msg) {
+  logEntries.unshift({ t: new Date(), tag, msg });
+  if (logEntries.length > 60) logEntries.pop();
+}
+
+class ParkingSlot {
+  constructor(slotId, slotType) { this.slotId = slotId; this.slotType = slotType; this.status = SlotStatus.AVAILABLE; }
+  markOccupied() { this.status = SlotStatus.OCCUPIED; }
+  markAvailable() { this.status = SlotStatus.AVAILABLE; }
+}
+
+class ParkingFloor {
+  constructor(floorNo) { this.floorNo = floorNo; this.slots = []; }
+  addSlot(slot) { this.slots.push(slot); }
+  getSlots() { return this.slots.slice(); }
+}
+
+class ParkingLot {
+  constructor(lotId, name, address) { this.lotId = lotId; this.name = name; this.address = address; this.floors = []; }
+  addFloor(floor) { this.floors.push(floor); }
+  getAvailableSlots(slotType = null) {
+    return this.floors.flatMap((f) => f.getSlots())
+      .filter((s) => s.status === SlotStatus.AVAILABLE && (slotType === null || s.slotType === slotType));
+  }
+}
+
+class Vehicle {
+  constructor(vehicleNo, vehicleType) { this.vehicleNo = vehicleNo; this.vehicleType = vehicleType; }
+  getVehicleDetails() { return this.vehicleType + " [" + this.vehicleNo + "]"; }
+}
+
+class Payment {
+  constructor(paymentId, amount) { this.paymentId = paymentId; this.amount = amount; this.status = PaymentStatus.PENDING; }
+  processPayment() {
+    if (this.amount <= 0) { this.status = PaymentStatus.FAILED; return false; }
+    this.status = PaymentStatus.SUCCESS; return true;
+  }
+  refund() {
+    if (this.status !== PaymentStatus.SUCCESS) return false;
+    this.status = PaymentStatus.REFUNDED; return true;
+  }
+}
+
+class Booking {
+  constructor(bookingId, driver, vehicle, slot, startTime, endTime, payment) {
+    Object.assign(this, { bookingId, driver, vehicle, slot, startTime, endTime, payment });
+    this.status = BookingStatus.PENDING;
+  }
+  confirm() {
+    if (this.status !== BookingStatus.PENDING) return false;
+    if (!this.payment.processPayment()) return false;
+    this.slot.markOccupied();
+    this.status = BookingStatus.CONFIRMED;
+    log("Booking.confirm()", this.bookingId + " confirmed, payment " + this.payment.status);
+    return true;
+  }
+  cancel() {
+    if (this.status === BookingStatus.CANCELLED) return false;
+    if (this.status === BookingStatus.CONFIRMED) this.payment.refund();
+    this.slot.markAvailable();
+    this.status = BookingStatus.CANCELLED;
+    log("Booking.cancel()", this.bookingId + " cancelled, payment " + this.payment.status + ", slot " + this.slot.slotId + " is free");
+    return true;
+  }
+}
+
+/* Observer: the subject */
+class ParkingAvailabilityMonitor {
+  constructor() { this.observers = []; }
+  registerObserver(o) { if (!this.observers.includes(o)) this.observers.push(o); }
+  removeObserver(o) { this.observers = this.observers.filter((x) => x !== o); }
+  notifyObservers(lot) {
+    if (!lot) return;
+    const count = lot.getAvailableSlots().length;
+    log("ParkingAvailabilityMonitor.notifyObservers()", "Availability changed: " + count + " slot(s) free");
+    this.observers.forEach((o) => o.update(lot.name, count));
+  }
+}
+
+class ParkingManager {
+  constructor(monitor) { this.monitor = monitor; }
+  allocateSlot(lot, slotType) {
+    const free = lot.getAvailableSlots(slotType);
+    if (!free.length) { log("ParkingManager.allocateSlot()", "No free " + slotType + " slot"); return null; }
+    const slot = free[0];
+    slot.markOccupied();
+    log("ParkingManager.allocateSlot()", "Reserved " + slot.slotId);
+    this.monitor.notifyObservers(lot);
+    return slot;
+  }
+}
+
+/* Singleton */
+class ParkingSystem {
+  static instance = null;
+  constructor() {
+    if (ParkingSystem.instance) throw new Error("Use ParkingSystem.getInstance()");
+    this.monitor = new ParkingAvailabilityMonitor();
+    this.manager = new ParkingManager(this.monitor);
+    this.bookings = [];
+  }
+  static getInstance() {
+    if (!ParkingSystem.instance) ParkingSystem.instance = new ParkingSystem();
+    return ParkingSystem.instance;
+  }
+  createBooking(driver, vehicle, lot, startTime, endTime) {
+    const slot = this.manager.allocateSlot(lot, vehicle.vehicleType);
+    if (!slot) return null;
+    const hours = Math.max((endTime - startTime) / 3600000, 1);
+    const payment = new Payment(newId("PAY"), Math.round(hours * RATE_PER_HOUR * 100) / 100);
+    const booking = new Booking(newId("BKG"), driver, vehicle, slot, startTime, endTime, payment);
+    log("ParkingSystem.createBooking()", booking.bookingId + " for " + vehicle.getVehicleDetails());
+    if (!booking.confirm()) { slot.markAvailable(); this.monitor.notifyObservers(lot); return null; }
+    this.bookings.unshift(booking);
+    return booking;
+  }
+}
+
+class Driver {
+  constructor(driverId, name, phone) { this.driverId = driverId; this.name = name; this.phone = phone; }
+  searchParking(lots, slotType = null) {
+    const result = {};
+    lots.forEach((l) => { result[l.name] = l.getAvailableSlots(slotType).length; });
+    log("Driver.searchParking()", JSON.stringify(result));
+    return result;
+  }
+  bookSlot(vehicle, lot, startTime, endTime) {
+    return ParkingSystem.getInstance().createBooking(this, vehicle, lot, startTime, endTime);
+  }
+  update(lotName, available) { // observer callback
+    log("Driver.update()", "Notification to " + this.name + ": " + lotName + " has " + available + " slot(s) free");
+  }
+}
+
+class Admin {
+  constructor(adminId, name) { this.adminId = adminId; this.name = name; }
+  addParkingFloor(lot, floor) {
+    lot.addFloor(floor);
+    log("Admin.addParkingFloor()", "Floor " + floor.floorNo + " added with " + floor.slots.length + " slots");
+    ParkingSystem.getInstance().monitor.notifyObservers(lot);
+  }
+  updateSlotStatus(lot, slot, status) {
+    slot.status = status;
+    log("Admin.updateSlotStatus()", slot.slotId + " set to " + status);
+    ParkingSystem.getInstance().monitor.notifyObservers(lot);
+  }
+}
+
+/* ---------- Seed data ---------- */
+const system = ParkingSystem.getInstance();
+const lot = new ParkingLot("L1", "City Mall Parking", "MG Road, Bengaluru");
+const admin = new Admin("A1", "Ravi");
+const driver = new Driver("D1", "Puneet", "9999999999");
+system.monitor.registerObserver(driver);
+
+function buildFloor(no) {
+  const f = new ParkingFloor(no);
+  for (let i = 1; i <= 3; i++) f.addSlot(new ParkingSlot("F" + no + "-CAR-" + i, "CAR"));
+  for (let i = 1; i <= 2; i++) f.addSlot(new ParkingSlot("F" + no + "-BIKE-" + i, "BIKE"));
+  return f;
+}
+lot.addFloor(buildFloor(1));
+lot.addFloor(buildFloor(2));
+lot.floors[1].slots[0].status = SlotStatus.MAINTENANCE; // sample: F2-CAR-1 is closed
+log("ParkingSystem.getInstance()", "Singleton created. Lot loaded with " + lot.floors.length + " floors");
+
+/* ---------- Rendering ---------- */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtTime = (d) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const STATUS_LABEL = { AVAILABLE: "Free", OCCUPIED: "Booked", MAINTENANCE: "Closed" };
+
+function setMsg(id, text, kind) { const el = $(id); el.textContent = text; el.className = "msg" + (kind ? " " + kind : ""); }
+
+function renderStats() {
+  const all = lot.getAvailableSlots().length;
+  const cars = lot.getAvailableSlots("CAR").length;
+  const bikes = lot.getAvailableSlots("BIKE").length;
+  $("stats").innerHTML =
+    `<div class="stat"><b>${all}</b><span>Slots free</span></div>` +
+    `<div class="stat"><b>${cars}</b><span>Car bays free</span></div>` +
+    `<div class="stat"><b>${bikes}</b><span>Bike bays free</span></div>`;
+}
+
+function renderFloors() {
+  const root = $("floors");
+  root.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;flex-direction:column;gap:20px";
+  lot.floors.forEach((floor) => {
+    const sec = document.createElement("div");
+    sec.className = "floor";
+    const free = floor.getSlots().filter((s) => s.status === SlotStatus.AVAILABLE).length;
+    sec.innerHTML = `<h3>Floor ${floor.floorNo} <span>${free} of ${floor.slots.length} free</span></h3>`;
+    const bays = document.createElement("div");
+    bays.className = "bays";
+    floor.getSlots().forEach((slot) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "slot";
+      b.dataset.status = slot.status;
+      b.setAttribute("aria-label", slot.slotId + ", " + slot.slotType + ", " + STATUS_LABEL[slot.status]);
+      b.innerHTML = `<span class="sid">${slot.slotId}</span><span class="stype">${slot.slotType}</span><span class="sstat">${STATUS_LABEL[slot.status]}</span>`;
+      b.addEventListener("click", () => onSlotClick(slot));
+      bays.appendChild(b);
+    });
+    sec.appendChild(bays);
+    wrap.appendChild(sec);
+  });
+  root.appendChild(wrap);
+}
+
+function renderBookings() {
+  const root = $("bookings");
+  if (!system.bookings.length) {
+    root.innerHTML = '<p class="empty">No bookings yet. Fill in the Driver panel and select Book slot to create the first one.</p>';
+    return;
+  }
+  const rows = system.bookings.map((b) => `
+    <tr>
+      <td class="mono">${esc(b.bookingId)}</td>
+      <td>${esc(b.driver.name)}</td>
+      <td>${esc(b.vehicle.getVehicleDetails())}</td>
+      <td class="mono">${esc(b.slot.slotId)}</td>
+      <td class="num">${fmtTime(b.startTime)} to ${fmtTime(b.endTime)}</td>
+      <td class="num">₹${b.payment.amount.toFixed(2)}</td>
+      <td><span class="pill" data-s="${b.payment.status}">${b.payment.status}</span></td>
+      <td><span class="pill" data-s="${b.status}">${b.status}</span></td>
+      <td>${b.status === BookingStatus.CANCELLED ? "" : `<button class="btn small" type="button" data-cancel="${esc(b.bookingId)}">Cancel</button>`}</td>
+    </tr>`).join("");
+  root.innerHTML = `<table><thead><tr><th>Booking</th><th>Driver</th><th>Vehicle</th><th>Slot</th><th>Time</th><th>Amount</th><th>Payment</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  root.querySelectorAll("[data-cancel]").forEach((btn) =>
+    btn.addEventListener("click", () => onCancel(btn.getAttribute("data-cancel"))));
+}
+
+function renderLog() {
+  $("log").innerHTML = logEntries.map((e) =>
+    `<li><span class="t">${e.t.toLocaleTimeString([], { hour12: false })}</span><span class="tag">${esc(e.tag)}</span><span class="m">${esc(e.msg)}</span></li>`).join("");
+}
+
+function renderAll() { renderStats(); renderFloors(); renderBookings(); renderLog(); }
+
+/* ---------- Event handlers ---------- */
+function syncDriver() {
+  driver.name = $("drv-name").value.trim() || "Driver";
+  driver.phone = $("drv-phone").value.trim();
+}
+
+$("book").addEventListener("click", () => {
+  syncDriver();
+  const no = $("veh-no").value.trim().toUpperCase();
+  if (!no) { setMsg("drv-msg", "Enter the vehicle number before booking.", "err"); return; }
+  const type = $("veh-type").value;
+  const hours = Number($("hours").value);
+  const start = new Date();
+  const end = new Date(start.getTime() + hours * 3600000);
+  const booking = driver.bookSlot(new Vehicle(no, type), lot, start, end);
+  if (!booking) setMsg("drv-msg", "No free " + type + " slot right now. Try another vehicle type or cancel a booking.", "err");
+  else setMsg("drv-msg", "Booked " + booking.slot.slotId + " for ₹" + booking.payment.amount.toFixed(2) + ". Payment " + booking.payment.status + ".", "good");
+  renderAll();
+});
+
+$("search").addEventListener("click", () => {
+  syncDriver();
+  const type = $("veh-type").value;
+  const res = driver.searchParking([lot], type);
+  setMsg("drv-msg", lot.name + ": " + res[lot.name] + " " + type + " slot(s) free.", "");
+  renderLog();
+});
+
+function onSlotClick(slot) {
+  if (slot.status === SlotStatus.OCCUPIED) { setMsg("adm-msg", slot.slotId + " is booked. Cancel its booking first.", "err"); return; }
+  const next = slot.status === SlotStatus.AVAILABLE ? SlotStatus.MAINTENANCE : SlotStatus.AVAILABLE;
+  admin.updateSlotStatus(lot, slot, next);
+  setMsg("adm-msg", slot.slotId + " is now " + STATUS_LABEL[next].toLowerCase() + ".", "good");
+  renderAll();
+}
+
+$("add-floor").addEventListener("click", () => {
+  const no = lot.floors.length + 1;
+  admin.addParkingFloor(lot, buildFloor(no));
+  setMsg("adm-msg", "Floor " + no + " added with 3 car and 2 bike slots.", "good");
+  renderAll();
+});
+
+function onCancel(id) {
+  const b = system.bookings.find((x) => x.bookingId === id);
+  if (!b) return;
+  if (b.cancel()) {
+    system.monitor.notifyObservers(lot);
+    setMsg("drv-msg", id + " cancelled. Payment " + b.payment.status + ".", "good");
+  }
+  renderAll();
+}
+
+$("lot-id").textContent = lot.lotId;
+$("lot-name").textContent = lot.name;
+$("lot-addr").textContent = lot.address;
+renderAll();
+</script>
